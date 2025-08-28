@@ -1,0 +1,36 @@
+{
+  "name": "webpilot-ai-agent",
+  "version": "1.0.0",
+  "description": "AI agent for browser automation using OpenAI Agents and Playwright",
+  "type": "module",
+  "main": "assignment.js",
+  "scripts": {
+    "start": "node assignment.js",
+    "dev": "node assignment.js",
+    "demo": "node demo.js",
+    "verify": "node verify-setup.js",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.0.3",
+    "dotenv": "^16.4.5",
+    "playwright": "^1.47.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ai",
+    "automation",
+    "browser",
+    "playwright",
+    "openai",
+    "web-scraping"
+  ],
+  "author": "WebPilot AI Agent",
+  "license": "MIT"
+}
