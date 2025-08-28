@@ -15,7 +15,7 @@ console.log("🌐 Launching browser...");
 const browser = await chromium.launch({
   headless: false, // Keep visible for demo purposes
   chromiumSandbox: true,
-  slowMo: 500, // Add slight delay for better visibility
+  slowMo: 800, // Slower for better visibility of cursor movements
   env: {},
   args: [
     "--disable-extensions",
@@ -136,7 +136,8 @@ const clickElement = tool({
 
 const fillInput = tool({
   name: "fill_input",
-  description: "Fill an input field with text using CSS selector",
+  description:
+    "Fill an input field with text using CSS selector with visible cursor movement",
   parameters: z.object({
     selector: z.string().describe("CSS selector of the input field"),
     text: z.string().describe("Text to fill in the input field"),
@@ -150,6 +151,10 @@ const fillInput = tool({
         state: "visible",
         timeout: 5000,
       });
+
+      // Scroll to element to ensure it's visible
+      await page.locator(input.selector).scrollIntoViewIfNeeded();
+      await page.waitForTimeout(500);
 
       // Verify the field type before filling
       const fieldInfo = await page.evaluate((selector) => {
@@ -165,18 +170,23 @@ const fillInput = tool({
 
       console.log(`📋 Field info for ${input.selector}:`, fieldInfo);
 
-      // Clear the field completely first
-      await page.click(input.selector); // Focus the field
-      await page.keyboard.down("Control"); // or 'Meta' on Mac
-      await page.keyboard.press("a"); // Select all
-      await page.keyboard.up("Control");
-      await page.keyboard.press("Delete"); // Delete selected content
-
-      // Wait a moment for the field to clear
+      // Click to focus the field - this shows cursor movement
+      await page.click(input.selector);
       await page.waitForTimeout(500);
 
-      // Now type the new value
-      await page.type(input.selector, input.text);
+      // Clear the field completely first with visible actions
+      await page.keyboard.down("Control"); // or 'Meta' on Mac
+      await page.keyboard.press("a"); // Select all - shows selection
+      await page.waitForTimeout(300);
+      await page.keyboard.up("Control");
+      await page.keyboard.press("Delete"); // Delete selected content
+      await page.waitForTimeout(300);
+
+      // Now type the new value character by character for visibility
+      for (let i = 0; i < input.text.length; i++) {
+        await page.keyboard.type(input.text[i]);
+        await page.waitForTimeout(50); // Small delay between characters
+      }
 
       // Verify the value was set correctly
       await page.waitForTimeout(500); // Wait for the value to be set
@@ -415,48 +425,514 @@ const findContactSection = tool({
   },
 });
 
-const submitForm = tool({
-  name: "submit_form",
+const findAuthForm = tool({
+  name: "find_auth_form",
   description:
-    "Submit a form by clicking the submit button or using form.submit()",
+    "Look for auth-sada forms, login sections, or signin links on the current page",
+  parameters: z.object({}),
+  async execute() {
+    const authInfo = await page.evaluate(() => {
+      // Look for auth-sada and authentication-related text and elements
+      const authKeywords =
+        /auth-sada|login|signin|sign.?in|auth|authenticate|log.?in|register|signup|sign.?up/i;
+
+      // Find authentication links with priority to auth-sada
+      const authLinks = Array.from(document.querySelectorAll("a"))
+        .filter(
+          (link) =>
+            /auth-sada/i.test(link.textContent || "") ||
+            /auth-sada/i.test(link.className || "") ||
+            /auth-sada/i.test(link.id || "") ||
+            link.href.includes("auth-sada") ||
+            authKeywords.test(link.textContent || "") ||
+            authKeywords.test(link.title || "") ||
+            link.href.includes("login") ||
+            link.href.includes("signin") ||
+            link.href.includes("auth")
+        )
+        .map((link) => ({
+          text: link.textContent?.trim() || "",
+          href: link.href,
+          selector: link.id
+            ? `#${link.id}`
+            : link.className
+            ? `.${link.className.split(" ")[0]}`
+            : null,
+          isAuthSada: /auth-sada/i.test(
+            link.textContent || link.className || link.id || link.href
+          ),
+        }));
+
+      // Find auth-sada forms and authentication forms
+      const authForms = Array.from(document.querySelectorAll("form"))
+        .filter((form) => {
+          const hasAuthSada =
+            /auth-sada/i.test(form.className || "") ||
+            /auth-sada/i.test(form.id || "");
+          const inputs = Array.from(form.querySelectorAll("input"));
+          const hasAuthInputs = inputs.some((input) =>
+            /email|username|password|login|signin/i.test(
+              input.name || input.placeholder || input.id || input.type || ""
+            )
+          );
+          return hasAuthSada || hasAuthInputs;
+        })
+        .map((form, index) => ({
+          formIndex: index,
+          id: form.id,
+          className: form.className,
+          selector: form.id
+            ? `#${form.id}`
+            : form.className
+            ? `.${form.className.split(" ")[0]}`
+            : `form:nth-of-type(${index + 1})`,
+          isAuthSada:
+            /auth-sada/i.test(form.className || "") ||
+            /auth-sada/i.test(form.id || ""),
+          inputs: Array.from(form.querySelectorAll("input")).map((input) => ({
+            type: input.type || "text",
+            name: input.name,
+            id: input.id,
+            placeholder: input.placeholder,
+            selector: input.id
+              ? `#${input.id}`
+              : input.name
+              ? `[name="${input.name}"]`
+              : null,
+            isEmail:
+              input.type === "email" ||
+              /email/i.test(input.name || input.placeholder || input.id || ""),
+            isPassword: input.type === "password",
+            isUsername: /username|user|login/i.test(
+              input.name || input.placeholder || input.id || ""
+            ),
+          })),
+        }));
+
+      // Find sections with auth-sada or auth-related id or class
+      const authSections = Array.from(
+        document.querySelectorAll(
+          '[id*="auth-sada"], [class*="auth-sada"], [id*="login"], [id*="signin"], [id*="auth"], [class*="login"], [class*="signin"], [class*="auth"], section'
+        )
+      )
+        .filter(
+          (section) =>
+            /auth-sada/i.test(section.className || "") ||
+            /auth-sada/i.test(section.id || "") ||
+            authKeywords.test(section.textContent || "") ||
+            /login|signin|auth/i.test(section.id || "") ||
+            /login|signin|auth/i.test(section.className || "")
+        )
+        .map((section) => ({
+          tagName: section.tagName,
+          id: section.id,
+          className: section.className,
+          selector: section.id
+            ? `#${section.id}`
+            : section.className
+            ? `.${section.className.split(" ")[0]}`
+            : null,
+          hasForm: section.querySelector("form") !== null,
+          isAuthSada:
+            /auth-sada/i.test(section.className || "") ||
+            /auth-sada/i.test(section.id || ""),
+        }));
+
+      return {
+        authLinks,
+        authForms,
+        authSections,
+        foundAuthElements:
+          authLinks.length > 0 ||
+          authForms.length > 0 ||
+          authSections.length > 0,
+        foundAuthSada:
+          authLinks.some((l) => l.isAuthSada) ||
+          authForms.some((f) => f.isAuthSada) ||
+          authSections.some((s) => s.isAuthSada),
+      };
+    });
+
+    return authInfo;
+  },
+});
+
+const findAndFillAllFields = tool({
+  name: "find_and_fill_all_fields",
+  description:
+    "Find all form fields and fill them systematically with appropriate test data",
   parameters: z.object({
-    formSelector: z.string().describe("CSS selector of the form to submit"),
+    formSelector: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "CSS selector of the form (optional - will find forms automatically)"
+      ),
   }),
   async execute(input) {
     try {
-      console.log(`📤 Attempting to submit form: ${input.formSelector}`);
+      console.log(`🔍 Finding all form fields to fill...`);
 
-      // First try to find and click the submit button
-      try {
-        await page.click(`${input.formSelector} button[type="submit"]`);
-        console.log(`✅ Clicked submit button`);
-      } catch (buttonError) {
-        // Try other submit button selectors
-        try {
-          await page.click(`${input.formSelector} input[type="submit"]`);
-          console.log(`✅ Clicked submit input`);
-        } catch (inputError) {
-          // Try buttons with submit-like text
-          try {
-            await page.click(`${input.formSelector} button:has-text("submit")`);
-            console.log(`✅ Clicked submit text button`);
-          } catch (textError) {
-            // Fallback: submit the form programmatically
-            await page.evaluate((selector) => {
-              const form = document.querySelector(selector);
-              if (form) {
-                form.submit();
+      // Find all forms and their fields
+      const formsData = await page.evaluate((formSelector) => {
+        let forms;
+        if (formSelector) {
+          const specificForm = document.querySelector(formSelector);
+          forms = specificForm ? [specificForm] : [];
+        } else {
+          forms = Array.from(document.querySelectorAll("form"));
+        }
+
+        return forms
+          .map((form, formIndex) => {
+            const fields = Array.from(
+              form.querySelectorAll("input, textarea, select")
+            )
+              .map((field, fieldIndex) => {
+                return {
+                  tagName: field.tagName.toLowerCase(),
+                  type: field.type || "text",
+                  name: field.name || "",
+                  id: field.id || "",
+                  placeholder: field.placeholder || "",
+                  required: field.required || false,
+                  value: field.value || "",
+                  selector: field.id
+                    ? `#${field.id}`
+                    : field.name
+                    ? `[name="${field.name}"]`
+                    : `form:nth-of-type(${
+                        formIndex + 1
+                      }) ${field.tagName.toLowerCase()}:nth-of-type(${
+                        fieldIndex + 1
+                      })`,
+                  fieldIndex: fieldIndex,
+                  isVisible: field.offsetParent !== null,
+                  isEmail:
+                    field.type === "email" ||
+                    /email/i.test(field.name || field.placeholder || field.id),
+                  isPassword: field.type === "password",
+                  isUsername: /username|user|login/i.test(
+                    field.name || field.placeholder || field.id
+                  ),
+                  isName:
+                    /name|fullname|firstname|lastname/i.test(
+                      field.name || field.placeholder || field.id
+                    ) && field.type !== "username",
+                  isPhone: /phone|tel|mobile/i.test(
+                    field.name || field.placeholder || field.id
+                  ),
+                  isMessage:
+                    /message|comment|description|details/i.test(
+                      field.name || field.placeholder || field.id
+                    ) || field.tagName.toLowerCase() === "textarea",
+                  isSubmit: field.type === "submit",
+                  isButton:
+                    field.type === "button" ||
+                    field.tagName.toLowerCase() === "button",
+                };
+              })
+              .filter(
+                (field) => field.isVisible && !field.isSubmit && !field.isButton
+              );
+
+            return {
+              formIndex,
+              formId: form.id || "",
+              formClass: form.className || "",
+              formSelector: form.id
+                ? `#${form.id}`
+                : `.${form.className.split(" ")[0]}` ||
+                  `form:nth-of-type(${formIndex + 1})`,
+              fields: fields,
+            };
+          })
+          .filter((form) => form.fields.length > 0);
+      }, input.formSelector);
+
+      console.log(`📊 Found ${formsData.length} forms with fillable fields`);
+
+      if (formsData.length === 0) {
+        return "No forms with fillable fields found on the page";
+      }
+
+      let filledFields = [];
+
+      // Fill each form's fields
+      for (const formData of formsData) {
+        console.log(`📝 Processing form: ${formData.formSelector}`);
+        console.log(`📝 Fields found: ${formData.fields.length}`);
+
+        for (const field of formData.fields) {
+          console.log(`🎯 Processing field: ${field.selector} (${field.type})`);
+
+          let testValue = "";
+
+          // Determine appropriate test value based on field type and context
+          if (field.isEmail) {
+            testValue = "testuser@example.com";
+          } else if (field.isPassword) {
+            testValue = "TestPassword123";
+          } else if (field.isUsername) {
+            testValue = "testuser";
+          } else if (field.isName) {
+            if (/first/i.test(field.name || field.placeholder || field.id)) {
+              testValue = "John";
+            } else if (
+              /last/i.test(field.name || field.placeholder || field.id)
+            ) {
+              testValue = "Doe";
+            } else {
+              testValue = "John Doe";
+            }
+          } else if (field.isPhone) {
+            testValue = "+1-555-123-4567";
+          } else if (field.isMessage) {
+            testValue = "This is a test message for form automation testing.";
+          } else if (field.type === "number") {
+            testValue = "123";
+          } else if (field.type === "url") {
+            testValue = "https://example.com";
+          } else if (field.type === "date") {
+            testValue = "2024-01-01";
+          } else if (field.type === "text" || field.type === "") {
+            // Use context from name/placeholder to determine value
+            if (
+              /company|organization/i.test(
+                field.name || field.placeholder || field.id
+              )
+            ) {
+              testValue = "Test Company";
+            } else if (
+              /subject|title/i.test(field.name || field.placeholder || field.id)
+            ) {
+              testValue = "Test Subject";
+            } else if (
+              /address/i.test(field.name || field.placeholder || field.id)
+            ) {
+              testValue = "123 Test Street, Test City, TC 12345";
+            } else {
+              testValue = "Test Value";
+            }
+          }
+
+          if (testValue) {
+            try {
+              // Scroll to field first
+              await page.locator(field.selector).scrollIntoViewIfNeeded();
+              await page.waitForTimeout(300);
+
+              // Click to focus with visible cursor movement
+              await page.click(field.selector);
+              await page.waitForTimeout(300);
+
+              // Clear field
+              await page.keyboard.down("Control");
+              await page.keyboard.press("a");
+              await page.waitForTimeout(200);
+              await page.keyboard.up("Control");
+              await page.keyboard.press("Delete");
+              await page.waitForTimeout(300);
+
+              // Type value character by character for visibility
+              for (let i = 0; i < testValue.length; i++) {
+                await page.keyboard.type(testValue[i]);
+                await page.waitForTimeout(30); // Small delay between characters
               }
-            }, input.formSelector);
-            console.log(`✅ Submitted form programmatically`);
+
+              // Verify the value
+              const actualValue = await page.inputValue(field.selector);
+              filledFields.push({
+                selector: field.selector,
+                type: field.type,
+                expectedValue: testValue,
+                actualValue: actualValue,
+                success: actualValue === testValue,
+              });
+
+              console.log(`✅ Filled ${field.selector}: "${actualValue}"`);
+              await page.waitForTimeout(500); // Pause between fields
+            } catch (fieldError) {
+              console.error(
+                `❌ Failed to fill field ${field.selector}:`,
+                fieldError.message
+              );
+              filledFields.push({
+                selector: field.selector,
+                type: field.type,
+                expectedValue: testValue,
+                actualValue: "",
+                success: false,
+                error: fieldError.message,
+              });
+            }
           }
         }
       }
 
-      // Wait for potential page changes
-      await page.waitForTimeout(2000);
+      return {
+        message: `Successfully processed ${formsData.length} forms and attempted to fill ${filledFields.length} fields`,
+        filledFields: filledFields,
+        formsFound: formsData.length,
+        fieldsProcessed: filledFields.length,
+        successfulFields: filledFields.filter((f) => f.success).length,
+      };
+    } catch (error) {
+      console.error(`❌ Failed to find and fill fields:`, error.message);
+      return `Failed to find and fill fields: ${error.message}`;
+    }
+  },
+});
 
-      return `Successfully submitted form: ${input.formSelector}`;
+const submitForm = tool({
+  name: "submit_form",
+  description:
+    "Submit a form by clicking the submit button with visible cursor movement",
+  parameters: z.object({
+    formSelector: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "CSS selector of the form to submit (optional - will find submit buttons automatically)"
+      ),
+  }),
+  async execute(input) {
+    try {
+      console.log(
+        `📤 Attempting to submit form: ${input.formSelector || "auto-detect"}`
+      );
+
+      // Find submit buttons/elements
+      const submitElements = await page.evaluate((formSelector) => {
+        let forms = formSelector
+          ? [document.querySelector(formSelector)]
+          : Array.from(document.querySelectorAll("form"));
+        forms = forms.filter((form) => form !== null);
+
+        let submitButtons = [];
+
+        // Look for submit buttons in forms
+        forms.forEach((form, formIndex) => {
+          // Look for submit buttons
+          const buttons = Array.from(
+            form.querySelectorAll(
+              'button[type="submit"], input[type="submit"], button:not([type]), button[type="button"]'
+            )
+          );
+          buttons.forEach((btn, btnIndex) => {
+            if (btn.offsetParent !== null) {
+              // is visible
+              submitButtons.push({
+                type: "submit-button",
+                selector: btn.id
+                  ? `#${btn.id}`
+                  : btn.className
+                  ? `.${btn.className.split(" ")[0]}`
+                  : `form:nth-of-type(${formIndex + 1}) button:nth-of-type(${
+                      btnIndex + 1
+                    })`,
+                text: btn.textContent?.trim() || btn.value || "",
+                formIndex: formIndex,
+              });
+            }
+          });
+
+          // Also look for clickable elements that might be submit buttons
+          const clickableSubmits = Array.from(
+            form.querySelectorAll(
+              '[onclick*="submit"], [class*="submit"], [id*="submit"]'
+            )
+          );
+          clickableSubmits.forEach((elem, elemIndex) => {
+            if (elem.offsetParent !== null && !elem.disabled) {
+              submitButtons.push({
+                type: "clickable-submit",
+                selector: elem.id
+                  ? `#${elem.id}`
+                  : elem.className
+                  ? `.${elem.className.split(" ")[0]}`
+                  : `form:nth-of-type(${formIndex + 1}) [onclick]:nth-of-type(${
+                      elemIndex + 1
+                    })`,
+                text: elem.textContent?.trim() || elem.value || "",
+                formIndex: formIndex,
+              });
+            }
+          });
+        });
+
+        return submitButtons;
+      }, input.formSelector);
+
+      console.log(
+        `🎯 Found ${submitElements.length} potential submit elements`
+      );
+
+      if (submitElements.length === 0) {
+        return "No submit buttons found on the page";
+      }
+
+      // Try to submit using the first viable submit element
+      for (const submitElement of submitElements) {
+        try {
+          console.log(
+            `🖱️  Attempting to click submit: ${submitElement.selector} ("${submitElement.text}")`
+          );
+
+          // Scroll to submit button
+          await page.locator(submitElement.selector).scrollIntoViewIfNeeded();
+          await page.waitForTimeout(500);
+
+          // Highlight the button briefly (visual feedback)
+          await page.evaluate((selector) => {
+            const element = document.querySelector(selector);
+            if (element) {
+              element.style.border = "3px solid red";
+              setTimeout(() => {
+                element.style.border = "";
+              }, 1000);
+            }
+          }, submitElement.selector);
+
+          // Click the submit button with visible cursor movement
+          await page.click(submitElement.selector);
+          await page.waitForTimeout(1000);
+
+          console.log(
+            `✅ Successfully clicked submit button: ${submitElement.selector}`
+          );
+
+          // Wait for potential page changes/responses
+          await page.waitForTimeout(3000);
+
+          return `Successfully submitted form by clicking: ${submitElement.selector} ("${submitElement.text}")`;
+        } catch (clickError) {
+          console.log(
+            `⚠️  Failed to click ${submitElement.selector}: ${clickError.message}`
+          );
+          continue;
+        }
+      }
+
+      // If all click attempts failed, try programmatic submission
+      try {
+        await page.evaluate((formSelector) => {
+          const forms = formSelector
+            ? [document.querySelector(formSelector)]
+            : Array.from(document.querySelectorAll("form"));
+          forms.forEach((form) => {
+            if (form) form.submit();
+          });
+        }, input.formSelector);
+
+        console.log(`✅ Submitted form programmatically`);
+        await page.waitForTimeout(2000);
+        return `Successfully submitted form programmatically`;
+      } catch (progError) {
+        return `Failed to submit form: All methods failed. Last error: ${progError.message}`;
+      }
     } catch (error) {
       console.error(`❌ Failed to submit form:`, error.message);
       return `Failed to submit form: ${error.message}`;
@@ -501,42 +977,52 @@ const checkFieldValues = tool({
 const websiteAutomationAgent = new Agent({
   name: "Website Automation Agent",
   instructions: `
-You are a sophisticated web automation agent that can interact with websites like a human user.
+You are a sophisticated web automation agent that can interact with websites like a human user with VISIBLE cursor movements and step-by-step form filling.
 
 Your current task is to:
-1. Navigate to narinder.in
-2. Locate the contact section automatically
-3. Fill in the contact form with appropriate details
-4. Submit the form
+1. Navigate to ui.chaicode.com
+2. Locate the auth-sada section or authentication form automatically 
+3. Fill in ALL necessary form fields with appropriate test credentials
+4. Show visible cursor movement and typing actions
+5. Click the submit button to complete the form
 
 Rules and Guidelines:
 - Always take a screenshot first to see the current state of the page
-- After each action, take another screenshot to verify the result
-- Use find_contact_section to locate contact forms and sections
-- Use get_page_info to understand the page structure
-- Look for contact sections, contact forms, or "Contact Us" navigation links
-- Navigate to contact sections if they're on separate pages
-- Use realistic but safe test data for contact form fields
+- After each major action, take another screenshot to verify the result
+- Use find_auth_form to locate auth-sada sections and authentication forms
+- PRIORITIZE auth-sada sections over general authentication sections
+- Use find_and_fill_all_fields to systematically fill ALL form fields
+- Make cursor movements visible and deliberate
+- Type character by character for better visibility
+- Look for auth-sada sections, login forms, signin forms, authentication sections
+- Navigate to login/signin pages if authentication is on separate pages
+- Use realistic but safe test credentials for all form fields
 - Be patient and wait for elements to load before interacting
 - If you encounter errors, analyze the page structure and try alternative approaches
 - Provide clear feedback about each step you're taking
 
-Contact Form Filling Strategy:
-- For name fields: use "John Doe" or "Test User"
-- For email fields: use "john.doe@example.com" or similar safe test email
-- For phone fields: use "+1-555-123-4567" or similar test phone number
-- For message/subject fields: use relevant test messages like "Hello, this is a test message from the automation agent"
-- For company fields: use "Test Company" or similar
-- For other fields: use appropriate test data based on field type and context
+Authentication Form Filling Strategy:
+- Use find_and_fill_all_fields to automatically detect and fill ALL fields
+- PRIORITIZE any forms or sections containing "auth-sada" in their class, id, or content
+- For email/username fields: use "testuser@example.com" or "testuser"
+- For password fields: use "TestPassword123"
+- For name fields: use "John Doe", "John", "Doe" as appropriate
+- For phone fields: use "+1-555-123-4567"
+- For message/textarea fields: use descriptive test messages
+- For other fields: use contextually appropriate test data
+- Fill fields one by one with visible cursor movement
+- Verify each field is filled correctly before proceeding
 
-Navigation Strategy:
-- First, look for contact sections on the current page
-- If no contact form is found, look for "Contact" or "Contact Us" navigation links
-- Click on contact links to navigate to contact pages
+Navigation and Interaction Strategy:
+- First, look for auth-sada sections on the current page
+- If no auth-sada section found, look for general authentication forms
+- If no auth form is found, look for "Login", "Sign In", "Sign Up" navigation links
+- Click on authentication links to navigate to login pages
 - Use CSS selectors when possible for reliable element targeting
-- Fall back to coordinate clicking only if selectors fail
+- Scroll to elements to ensure they're visible before interacting
+- Make all cursor movements and typing visible and deliberate
 - Always verify form submission by checking for success messages or page changes
-- Scroll to contact sections if they're further down the page
+- Use submit_form tool to submit forms with visible button clicking
   `,
   tools: [
     takeScreenShot,
@@ -549,6 +1035,8 @@ Navigation Strategy:
     getPageInfo,
     scrollToElement,
     findContactSection,
+    findAuthForm,
+    findAndFillAllFields,
     submitForm,
     checkFieldValues,
   ],
@@ -562,43 +1050,48 @@ async function runWebAutomation() {
     const result = await run(
       websiteAutomationAgent,
       `
-Complete this task step by step:
+Complete this task step by step with VISIBLE cursor movements and comprehensive form filling:
 
-1. Navigate to narinder.in
-2. Take a screenshot to see the page
-3. Find the contact form 
-4. Fill each field ONE BY ONE with verification:
-   
-   STEP 1: Fill name field
-   - Use selector: input[name="name"]
-   - Fill with: John Doe
-   - Verify it's filled correctly
-   
-   STEP 2: Fill email field  
-   - Use selector: input[name="email"]
-   - Fill with: john.doe@example.com
-   - Verify it's filled correctly
-   
-   STEP 3: Fill phone field
-   - Use selector: input[name="phone"] 
-   - Fill with: +1-555-123-4567
-   - Verify it's filled correctly
-   
-   STEP 4: Fill message field
-   - Use selector: textarea[name="message"]
-   - Fill with: Hello, this is a test message from the automation agent.
-   - Verify it's filled correctly
+1. Navigate to ui.chaicode.com
+2. Take a screenshot to see the initial page
+3. Use find_auth_form tool to locate auth-sada sections and authentication forms
+4. PRIORITIZE any auth-sada sections over general authentication forms
+5. If auth-sada section is found on current page, proceed to step 7
+6. If no auth-sada section found, look for login/signin links and click them to navigate to authentication pages
+7. Take a screenshot after reaching the auth-sada or authentication page
+8. Use find_and_fill_all_fields tool to systematically fill ALL form fields:
+   - This will automatically detect all form fields
+   - Fill each field with appropriate test data based on field type
+   - Show visible cursor movement and character-by-character typing
+   - Verify each field is filled correctly
+9. Take a screenshot after filling all fields to verify the form state
+10. Use submit_form tool to submit the form with visible button clicking
+11. Take a final screenshot after submission to verify results
 
-5. Submit the form using submit_form tool
+CRITICAL REQUIREMENTS:
+- PRIORITIZE auth-sada sections/forms over general authentication
+- Make ALL cursor movements and typing VISIBLE with deliberate pacing
+- Use find_and_fill_all_fields for comprehensive field detection and filling
+- Fill ALL form fields, not just username/password
+- Show character-by-character typing for better visibility
+- Verify each step with screenshots
+- Use realistic test credentials for all field types
+- Complete the entire form submission process
+- Provide detailed feedback about each action taken
 
-CRITICAL: 
-- Fill fields ONE AT A TIME
-- Verify each field after filling before moving to next
-- Take screenshot after filling all fields to verify
-- Do NOT fill multiple fields simultaneously
+TEST DATA TO USE:
+- Email: testuser@example.com
+- Username: testuser  
+- Password: TestPassword123
+- Name fields: John Doe (or John/Doe separately)
+- Phone: +1-555-123-4567
+- Message/Comments: "This is a test message for form automation testing."
+- Other fields: Contextually appropriate test data
+
+FOCUS: Look specifically for "auth-sada" in class names, IDs, or content first!
     `,
       {
-        maxTurns: 20,
+        maxTurns: 25,
       }
     );
 

@@ -1,6 +1,14 @@
 # WebPilot AI Agent
 
-An intelligent browser automation agent that can interact with websites like a human using OpenAI's GPT and Playwright.
+An intelligent browser automation agent that can interact### Automation Flow
+
+1. **Initialize**: Launch browser and take initial screenshot
+2. **Navigate**: Go to target website (ui.chaicode.com)
+3. **Analyze**: Use AI to understand page structure and locate authentication forms
+4. **Navigate to Auth**: Find login/signin forms or navigate to authentication pages
+5. **Fill**: Automatically fill authentication form fields with test credentials
+6. **Submit**: Click submit button and verify results
+7. **Report**: Provide detailed feedback on success/failuresites like a human using OpenAI's GPT and Playwright.
 
 ## Features
 
@@ -14,10 +22,10 @@ An intelligent browser automation agent that can interact with websites like a h
 ## Task Overview
 
 This agent is specifically designed to:
-1. Navigate to narinder.in
-2. Automatically locate the contact section or contact form
-3. Fill in contact details with appropriate test data
-4. Submit the contact form
+1. Navigate to ui.chaicode.com
+2. Automatically locate authentication forms (login, signin)
+3. Fill in necessary authentication details with test credentials
+4. Submit the authentication form
 
 ## Prerequisites
 
@@ -96,13 +104,9 @@ The agent uses several specialized tools:
 ## Test Data Strategy
 
 The agent uses safe, realistic test data:
-- **Name**: John Doe
-- **Email**: john.doe@example.com
-- **Phone**: +1-555-123-4567
-- **Message**: Test message from automation agent
-- **Subject**: Test Contact Form Submission
-- **Company**: Test Company
-- **Other fields**: Context-appropriate test values
+- **Username/Email**: testuser@example.com
+- **Password**: TestPassword123
+- **Other auth fields**: Context-appropriate test values
 
 ## Troubleshooting
 
