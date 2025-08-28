@@ -15,7 +15,7 @@ console.log("🌐 Launching browser...");
 const browser = await chromium.launch({
   headless: false, // Keep visible for demo purposes
   chromiumSandbox: true,
-  slowMo: 800, // Slower for better visibility of cursor movements
+  slowMo: 200, // Faster for better performance while still visible
   env: {},
   args: [
     "--disable-extensions",
@@ -154,7 +154,7 @@ const fillInput = tool({
 
       // Scroll to element to ensure it's visible
       await page.locator(input.selector).scrollIntoViewIfNeeded();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(200);
 
       // Verify the field type before filling
       const fieldInfo = await page.evaluate((selector) => {
@@ -172,24 +172,24 @@ const fillInput = tool({
 
       // Click to focus the field - this shows cursor movement
       await page.click(input.selector);
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(200);
 
       // Clear the field completely first with visible actions
       await page.keyboard.down("Control"); // or 'Meta' on Mac
       await page.keyboard.press("a"); // Select all - shows selection
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(100);
       await page.keyboard.up("Control");
       await page.keyboard.press("Delete"); // Delete selected content
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(100);
 
       // Now type the new value character by character for visibility
       for (let i = 0; i < input.text.length; i++) {
         await page.keyboard.type(input.text[i]);
-        await page.waitForTimeout(50); // Small delay between characters
+        await page.waitForTimeout(15); // Faster delay between characters
       }
 
       // Verify the value was set correctly
-      await page.waitForTimeout(500); // Wait for the value to be set
+      await page.waitForTimeout(200); // Faster wait for the value to be set
       const actualValue = await page.inputValue(input.selector);
       console.log(
         `✅ Successfully filled input: ${input.selector} with value: "${actualValue}"`
@@ -673,7 +673,7 @@ const findAndFillAllFields = tool({
           if (field.isEmail) {
             testValue = "testuser@example.com";
           } else if (field.isPassword) {
-            testValue = "TestPassword123";
+            testValue = "Test123";
           } else if (field.isUsername) {
             testValue = "testuser";
           } else if (field.isName) {
@@ -721,24 +721,24 @@ const findAndFillAllFields = tool({
             try {
               // Scroll to field first
               await page.locator(field.selector).scrollIntoViewIfNeeded();
-              await page.waitForTimeout(300);
+              await page.waitForTimeout(100);
 
               // Click to focus with visible cursor movement
               await page.click(field.selector);
-              await page.waitForTimeout(300);
+              await page.waitForTimeout(100);
 
               // Clear field
               await page.keyboard.down("Control");
               await page.keyboard.press("a");
-              await page.waitForTimeout(200);
+              await page.waitForTimeout(50);
               await page.keyboard.up("Control");
               await page.keyboard.press("Delete");
-              await page.waitForTimeout(300);
+              await page.waitForTimeout(100);
 
               // Type value character by character for visibility
               for (let i = 0; i < testValue.length; i++) {
                 await page.keyboard.type(testValue[i]);
-                await page.waitForTimeout(30); // Small delay between characters
+                await page.waitForTimeout(10); // Faster delay between characters
               }
 
               // Verify the value
@@ -752,7 +752,7 @@ const findAndFillAllFields = tool({
               });
 
               console.log(`✅ Filled ${field.selector}: "${actualValue}"`);
-              await page.waitForTimeout(500); // Pause between fields
+              await page.waitForTimeout(200); // Faster pause between fields
             } catch (fieldError) {
               console.error(
                 `❌ Failed to fill field ${field.selector}:`,
@@ -993,6 +993,8 @@ Rules and Guidelines:
 - PRIORITIZE auth-sada sections over general authentication sections
 - Use find_and_fill_all_fields to systematically fill ALL form fields
 - Make cursor movements visible and deliberate
+- EXECUTE ACTIONS IMMEDIATELY when you identify what needs to be done
+- DO NOT just describe what you will do - ACTUALLY DO IT
 - Type character by character for better visibility
 - Look for auth-sada sections, login forms, signin forms, authentication sections
 - Navigate to login/signin pages if authentication is on separate pages
@@ -1005,7 +1007,7 @@ Authentication Form Filling Strategy:
 - Use find_and_fill_all_fields to automatically detect and fill ALL fields
 - PRIORITIZE any forms or sections containing "auth-sada" in their class, id, or content
 - For email/username fields: use "testuser@example.com" or "testuser"
-- For password fields: use "TestPassword123"
+- For password fields: use "Test123"
 - For name fields: use "John Doe", "John", "Doe" as appropriate
 - For phone fields: use "+1-555-123-4567"
 - For message/textarea fields: use descriptive test messages
@@ -1056,9 +1058,9 @@ Complete this task step by step with VISIBLE cursor movements and comprehensive 
 2. Take a screenshot to see the initial page
 3. Use find_auth_form tool to locate auth-sada sections and authentication forms
 4. PRIORITIZE any auth-sada sections over general authentication forms
-5. If auth-sada section is found on current page, proceed to step 7
-6. If no auth-sada section found, look for login/signin links and click them to navigate to authentication pages
-7. Take a screenshot after reaching the auth-sada or authentication page
+5. If auth-sada section is found on current page, proceed to step 8
+6. If no auth-sada section found, look for login/signin links and ACTUALLY CLICK them to navigate to authentication pages
+7. Take a screenshot after navigation to verify you're on the authentication page
 8. Use find_and_fill_all_fields tool to systematically fill ALL form fields:
    - This will automatically detect all form fields
    - Fill each field with appropriate test data based on field type
@@ -1069,6 +1071,7 @@ Complete this task step by step with VISIBLE cursor movements and comprehensive 
 11. Take a final screenshot after submission to verify results
 
 CRITICAL REQUIREMENTS:
+- DO NOT STOP after identifying forms/links - ACTUALLY PERFORM THE ACTIONS
 - PRIORITIZE auth-sada sections/forms over general authentication
 - Make ALL cursor movements and typing VISIBLE with deliberate pacing
 - Use find_and_fill_all_fields for comprehensive field detection and filling
@@ -1076,13 +1079,19 @@ CRITICAL REQUIREMENTS:
 - Show character-by-character typing for better visibility
 - Verify each step with screenshots
 - Use realistic test credentials for all field types
-- Complete the entire form submission process
+- Complete the entire form submission process including clicking submit
 - Provide detailed feedback about each action taken
+
+YOU MUST ACTUALLY EXECUTE THESE ACTIONS, NOT JUST PLAN THEM:
+- If you find login links, CLICK them immediately
+- If you find forms, FILL them completely with the tools
+- If you fill forms, SUBMIT them with the submit tool
+- Take screenshots throughout to show progress
 
 TEST DATA TO USE:
 - Email: testuser@example.com
 - Username: testuser  
-- Password: TestPassword123
+- Password: Test123
 - Name fields: John Doe (or John/Doe separately)
 - Phone: +1-555-123-4567
 - Message/Comments: "This is a test message for form automation testing."
